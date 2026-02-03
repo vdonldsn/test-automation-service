@@ -1,0 +1,308 @@
+# Test Automation Service Configuration
+# This service runs as a Spring Boot application that can be deployed to ECS
+# It exposes REST endpoints to trigger Karate test executions
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /test-automation
+  # ECS ALB Listener Configuration
+  # This distinguishes where the service starts up in the shared load balancer
+  listener:
+    # The listener rule path pattern for this service
+    # ALB will route requests matching this pattern to this service
+    path-pattern: /test-automation/*
+    # Health check path for ALB target group
+    health-check-path: /test-automation/actuator/health
+    # Priority for listener rule (lower = higher priority)
+    priority: 100
+
+spring:
+  application:
+    name: test-automation-service
+  
+  # PostgreSQL Database Configuration
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/testautomation}
+    username: ${DB_USERNAME:testuser}
+    password: ${DB_PASSWORD:testpass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: TestAutomationPool
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+  
+  # Actuator Configuration (for health checks)
+  actuator:
+    endpoints:
+      web:
+        exposure:
+          include: health,info,metrics,prometheus
+        base-path: /actuator
+
+# AWS Configuration
+aws:
+  region: ${AWS_REGION:us-east-1}
+  # Credentials - will use IAM role in ECS, env vars locally
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+  
+  # S3 Service Configuration
+  s3:
+    endpoint: ${S3_ENDPOINT:}  # Empty = use default AWS endpoint
+    bucket-name: ${S3_BUCKET_NAME:test-automation-bucket}
+    connection-timeout: 30000
+    request-timeout: 60000
+  
+  # DynamoDB Service Configuration
+  dynamodb:
+    endpoint: ${DYNAMODB_ENDPOINT:}
+    table-prefix: ${DYNAMODB_TABLE_PREFIX:testautomation}
+    connection-timeout: 30000
+    request-timeout: 60000
+  
+  # Lambda Service Configuration
+  lambda:
+    endpoint: ${LAMBDA_ENDPOINT:}
+    function-prefix: ${LAMBDA_FUNCTION_PREFIX:testautomation}
+    invocation-timeout: 300000
+  
+  # SNS Service Configuration
+  sns:
+    endpoint: ${SNS_ENDPOINT:}
+    topic-prefix: ${SNS_TOPIC_PREFIX:testautomation}
+    connection-timeout: 30000
+  
+  # SQS Service Configuration
+  sqs:
+    endpoint: ${SQS_ENDPOINT:}
+    queue-prefix: ${SQS_QUEUE_PREFIX:testautomation}
+    connection-timeout: 30000
+    wait-time-seconds: 20
+    max-messages: 10
+  
+  # CloudWatch Configuration
+  cloudwatch:
+    namespace: ${CLOUDWATCH_NAMESPACE:TestAutomation}
+    enabled: ${CLOUDWATCH_ENABLED:true}
+
+# Microservices Configuration
+# These are the other services in the shared ALB
+microservices:
+  # User Service
+  user-service:
+    base-url: ${USER_SERVICE_URL:http://localhost:8081}
+    context-path: /user-service
+    timeout: 30000
+  
+  # Order Service
+  order-service:
+    base-url: ${ORDER_SERVICE_URL:http://localhost:8082}
+    context-path: /order-service
+    timeout: 30000
+  
+  # Payment Service
+  payment-service:
+    base-url: ${PAYMENT_SERVICE_URL:http://localhost:8083}
+    context-path: /payment-service
+    timeout: 30000
+  
+  # Notification Service
+  notification-service:
+    base-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
+    context-path: /notification-service
+    timeout: 30000
+
+# Karate Configuration
+karate:
+  # Environment (dev, qa, staging, prod)
+  env: ${KARATE_ENV:dev}
+  
+  # Output directory for test reports
+  output-dir: ${KARATE_OUTPUT_DIR:build/karate-reports}
+  
+  # Thread configuration for parallel execution
+  threads: ${KARATE_THREADS:5}
+  
+  # Test execution timeout (milliseconds)
+  timeout: ${KARATE_TIMEOUT:300000}
+  
+  # Retry configuration
+  retry:
+    enabled: true
+    max-attempts: 3
+    delay-ms: 1000
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.automation: DEBUG
+    com.intuit.karate: INFO
+    software.amazon.awssdk: WARN
+    org.springframework: INFO
+    org.hibernate: WARN
+  
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  
+  file:
+    name: ${LOG_FILE:logs/test-automation-service.log}
+    max-size: 100MB
+    max-history: 30
+    total-size-cap: 3GB
+
+# Management and Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+# Swagger/OpenAPI Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    filter: true
+  show-actuator: true
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
+# ECS Deployment Configuration
+ecs:
+  cluster-name: ${ECS_CLUSTER_NAME:test-automation-cluster}
+  service-name: ${ECS_SERVICE_NAME:test-automation-service}
+  task-definition-family: ${ECS_TASK_FAMILY:test-automation-task}
+  
+  # ALB Configuration
+  alb:
+    name: ${ALB_NAME:shared-services-alb}
+    listener-arn: ${ALB_LISTENER_ARN:}
+    target-group-arn: ${ALB_TARGET_GROUP_ARN:}
+    
+    # Target Group Configuration
+    target-group:
+      protocol: HTTP
+      port: 8080
+      health-check-interval: 30
+      health-check-timeout: 5
+      healthy-threshold: 2
+      unhealthy-threshold: 3
+      deregistration-delay: 30
+
+# Environment-specific configurations
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+aws:
+  s3:
+    bucket-name: test-automation-dev-bucket
+  dynamodb:
+    table-prefix: dev-testautomation
+
+karate:
+  env: dev
+  threads: 1
+
+logging:
+  level:
+    com.automation: DEBUG
+    com.intuit.karate: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: qa
+
+aws:
+  region: us-east-1
+  s3:
+    bucket-name: test-automation-qa-bucket
+  dynamodb:
+    table-prefix: qa-testautomation
+
+karate:
+  env: qa
+  threads: 3
+
+---
+spring:
+  config:
+    activate:
+      on-profile: staging
+
+aws:
+  region: us-east-1
+  s3:
+    bucket-name: test-automation-staging-bucket
+  dynamodb:
+    table-prefix: staging-testautomation
+
+karate:
+  env: staging
+  threads: 5
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+aws:
+  region: us-east-1
+  s3:
+    bucket-name: test-automation-prod-bucket
+  dynamodb:
+    table-prefix: prod-testautomation
+
+karate:
+  env: prod
+  threads: 10
+
+logging:
+  level:
+    com.automation: INFO
+    com.intuit.karate: WARN
