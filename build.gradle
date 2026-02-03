@@ -1,0 +1,135 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'application'
+}
+
+group = 'com.automation'
+version = '1.0.0'
+sourceCompatibility = '17'
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot dependencies
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-configuration-processor'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    
+    // Karate Testing Framework
+    implementation 'com.intuit.karate:karate-core:1.4.1'
+    testImplementation 'com.intuit.karate:karate-junit5:1.4.1'
+    
+    // AWS SDK v2
+    implementation platform('software.amazon.awssdk:bom:2.21.0')
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:lambda'
+    implementation 'software.amazon.awssdk:sns'
+    implementation 'software.amazon.awssdk:sqs'
+    implementation 'software.amazon.awssdk:cloudwatch'
+    implementation 'software.amazon.awssdk:sts'
+    
+    // PostgreSQL
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+    
+    // Logging
+    implementation 'org.springframework.boot:spring-boot-starter-logging'
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    
+    // Jackson for JSON
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    
+    // Swagger/OpenAPI Documentation
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+    
+    // Apache Commons
+    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    implementation 'commons-io:commons-io:2.15.0'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+}
+
+application {
+    mainClass = 'com.automation.TestAutoApplication'
+}
+
+bootJar {
+    archiveBaseName = 'test-automation-service'
+    archiveVersion = "${version}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'karate.options', System.getProperty('karate.options')
+    systemProperty 'karate.env', System.getProperty('karate.env')
+    outputs.upToDateWhen { false }
+}
+
+// Task to run Karate tests standalone
+task karateTest(type: Test) {
+    useJUnitPlatform()
+    systemProperty 'karate.options', System.getProperty('karate.options')
+    systemProperty 'karate.env', System.getProperty('karate.env', 'dev')
+    outputs.upToDateWhen { false }
+    
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+        showStandardStreams = true
+    }
+}
+
+// Task to generate Karate reports
+task karateReport {
+    doLast {
+        def reportDir = new File("${buildDir}/karate-reports")
+        if (reportDir.exists()) {
+            println "Karate reports available at: ${reportDir.absolutePath}"
+        }
+    }
+}
+
+karateTest.finalizedBy(karateReport)
+
+// Docker support (optional)
+task dockerBuild(type: Exec) {
+    dependsOn bootJar
+    commandLine 'docker', 'build', '-t', "test-automation-service:${version}", '.'
+}
+
+// ECS deployment helper
+task ecsPackage(type: Zip) {
+    dependsOn bootJar
+    from bootJar.archiveFile
+    archiveFileName = "test-automation-service-${version}.zip"
+    destinationDirectory = file("${buildDir}/distributions")
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
